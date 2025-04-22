@@ -34,7 +34,7 @@ exports.loginUser = async (req, res) => {
     const token = jwt.sign(
       { id: foundUser.id, role: foundUser.Role.name },
       process.env.JWT_SECRET || "your_jwt_secret",
-      { expiresIn: "1h" }
+      { expiresIn: "10h" }
     );
 
     res.status(200).json({
@@ -59,7 +59,7 @@ exports.validatePin = async (req, res) => {
     }
 
     if (!foundUser) {
-      return res.status(404).json({ message: "Invalid PIN" });
+      return res.status(404).json({ message: "Code PIN Incorrect" });
     }
 
     res.status(200).json({ message: "PIN validated successfully", userId: foundUser.id });

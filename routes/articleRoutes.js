@@ -26,22 +26,40 @@ router.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // === Articles Routes ===
 
-// Get all active articles with their images
+
+
 router.get("/articles", authMiddleware, async (req, res) => {
   try {
-    const articles = await Article.findAll({ where: { active: 1 } });
-    
-    // Map over the articles and add the image path
-    const articlesWithImage = articles.map(article => {
-      const imagePath = article.image ? `${req.protocol}://${req.get("host")}/uploads/${article.image}` : null;
-      return { ...article.toJSON(), imagePath };
+    const articles = await Article.findAll({
+      where: { active: 1 },
+      include: [
+        {
+          model: Category,
+          attributes: ["designation"],
+          as: "category", // use alias if defined in association
+        },
+      ],
     });
 
-    res.json(articlesWithImage);
+    const articlesWithDetails = articles.map((article) => {
+      const imagePath = article.image
+        ? `${req.protocol}://${req.get("host")}/uploads/${article.image}`
+        : null;
+
+      return {
+        ...article.toJSON(),
+        imagePath,
+        designation: article.category?.designation || null, // Add designation directly
+      };
+    });
+
+    res.json(articlesWithDetails);
   } catch (error) {
+    console.error("Error fetching articles:", error);
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // Get all active articles + categories with their images
 router.get("/articles-with-categories", authMiddleware, async (req, res) => {
@@ -49,8 +67,11 @@ router.get("/articles-with-categories", authMiddleware, async (req, res) => {
     const articles = await Article.findAll({ where: { active: 1 } });
     const categories = await Category.findAll();
 
-    // Add image paths to articles
-    const articlesWithImage = articles.map(article => {
+    // Filter out articles with stock === 0
+    const filteredArticles = articles.filter(article => article.stock > 0);
+
+    // Add image paths to filtered articles
+    const articlesWithImage = filteredArticles.map(article => {
       const imagePath = article.image ? `${req.protocol}://${req.get("host")}/uploads/${article.image}` : null;
       return { ...article.toJSON(), imagePath };
     });
@@ -61,34 +82,59 @@ router.get("/articles-with-categories", authMiddleware, async (req, res) => {
   }
 });
 
-// Create a new article (with image upload)
+
 router.post("/articles", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    // Ensure proper type conversion for ref, libelle, and stock
-    const articleData = {
-      ref: String(req.body.ref), // Force ref to be a string
-      code_barre: req.body.code_barre || null,
-      libelle: String(req.body.libelle), // Force libelle to be a string
-      categorie: req.body.categorie || null,
-      stock: req.body.stock ? String(req.body.stock) : null, // Ensure stock is a string (if it's empty, make it null)
-      cout: parseFloat(req.body.cout) || 0,
-      prix: parseFloat(req.body.prix) || 0,
-      active: req.body.active === "true" || req.body.active === true,
+    const {
+      ref,
+      code_barre,
+      libelle,
+      stock,
+      cout,
+      prix,
+      active,
+      categorie, // You're sending this as the category name like "Red Bull"
+    } = req.body;
+
+    let category = null;
+
+    // Find category by its 'designation'
+    if (categorie) {
+      category = await Category.findOne({
+        where: {
+          designation: categorie.trim(), // make sure to trim it
+        },
+      });
+
+      if (!category) {
+        return res.status(400).json({ error: "Category designation does not exist" });
+      }
+    }
+
+    // Create the article
+    const article = await Article.create({
+      ref: String(ref),
+      code_barre: code_barre || null,
+      libelle: String(libelle),
+      categorie: category ? category.id : null, // Store category ID
+      stock: stock ? String(stock) : null,
+      cout: parseFloat(cout) || 0,
+      prix: parseFloat(prix) || 0,
+      active: active === "true" || active === true,
       image: req.file ? req.file.filename : null,
-    };
+    });
 
-    const article = await Article.create(articleData);
-
-    // If the image is uploaded, create an accessible image path URL
     const imagePath = article.image
       ? `${req.protocol}://${req.get("host")}/uploads/${article.image}`
       : null;
 
     res.status(201).json({ ...article.toJSON(), imagePath });
   } catch (error) {
+    console.error("Error creating article:", error);
     res.status(400).json({ error: error.message });
   }
 });
+
 
 
 // Update an article (with image upload)
@@ -97,20 +143,25 @@ router.put("/articles/:id", authMiddleware, upload.single("image"), async (req, 
     const article = await Article.findByPk(req.params.id);
     if (!article) return res.status(404).json({ error: "Article not found" });
 
-    // Extract form data and ensure correct data types
-    const ref = req.body.ref ? String(req.body.ref) : article.ref; // Ensure string type
+    // Extract form data and ensure correct types
+    const ref = req.body.ref ? String(req.body.ref) : article.ref;
     const codeBarre = req.body.code_barre || article.code_barre;
-    const libelle = req.body.libelle ? String(req.body.libelle) : article.libelle; // Ensure string type
-    const categorie = req.body.categorie || article.categorie;
-    const stock = req.body.stock ? String(req.body.stock) : article.stock; // Ensure string type
+    const libelle = req.body.libelle ? String(req.body.libelle) : article.libelle;
+    const stock = req.body.stock ? String(req.body.stock) : article.stock;
     const cout = req.body.cout ? parseFloat(req.body.cout) : article.cout;
     const prix = req.body.prix ? parseFloat(req.body.prix) : article.prix;
-    const active = req.body.active === "true" || article.active;
-
-    // If a new image was uploaded, use the new image filename
+    const active = req.body.active === "true" || req.body.active === true ? true : false;
     const image = req.file ? req.file.filename : article.image;
 
-    // Prepare the updated article data
+    let categorie = article.categorie;
+
+    // Check if new designation is provided, fetch its ID
+    if (req.body.categorie) {
+      const category = await Category.findOne({ where: { designation: req.body.categorie } });
+      if (!category) return res.status(400).json({ error: "Designation does not exist" });
+      categorie = category.id;
+    }
+
     const updatedData = {
       ref,
       code_barre: codeBarre,
@@ -123,11 +174,9 @@ router.put("/articles/:id", authMiddleware, upload.single("image"), async (req, 
       image,
     };
 
-    // Update the article in the database
     await article.update(updatedData);
 
     const imagePath = image ? `${req.protocol}://${req.get("host")}/uploads/${image}` : null;
-
     res.json({ ...article.toJSON(), imagePath });
   } catch (error) {
     console.error(error);

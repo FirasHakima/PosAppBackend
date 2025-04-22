@@ -12,6 +12,7 @@ router.get("/users", authMiddleware, authController.getUsers); // Get all users
 router.put("/users/:id", authMiddleware, authController.updateUserPermissions); // Update user permissions
 router.delete("/users/:id", authMiddleware, authController.deleteUser); // Delete a user
 router.post("/roles/permissions", authMiddleware, authController.updateRolePermissions); // Update role permissions
+router.post("/validate-pin", authMiddleware, authController.validatePin); // Update role permissions
 
 // Refresh token route
 router.post("/refresh", async (req, res) => {

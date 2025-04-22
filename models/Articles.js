@@ -19,14 +19,14 @@ const Article = sequelize.define("Article", {
     type: DataTypes.STRING(255),
     allowNull: false,
   },
-  categorie: {
-    type: DataTypes.INTEGER, // Changed to INTEGER to reference Category.id
-    allowNull: true,
-    references: {
-      model: "Categories", // References the Category table
-      key: "id",
-    },
+ categorie: {
+  type: DataTypes.INTEGER,
+  allowNull: true,
+  references: {
+    model: 'Categories', // or 'Category' if that's how your table is named
+    key: 'id',
   },
+},
   stock: {
     type: DataTypes.STRING(255),
     allowNull: true,

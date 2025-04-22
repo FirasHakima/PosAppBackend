@@ -6,7 +6,11 @@ const bcrypt = require("bcryptjs");
 
 const seed = async () => {
   try {
+    // Disable foreign key checks temporarily
+    await sequelize.query("SET FOREIGN_KEY_CHECKS = 0", { raw: true });
+
     await sequelize.sync({ force: true }); // Use force: true to drop and recreate tables
+
     const adminRole = await Role.create({
       name: "Administrator",
       permissions: {
@@ -25,6 +29,7 @@ const seed = async () => {
         caisseModule: true,
       },
     });
+
     const cashierRole = await Role.create({
       name: "Cashier",
       permissions: {
@@ -43,6 +48,7 @@ const seed = async () => {
         caisseModule: true,
       },
     });
+
     const managerRole = await Role.create({
       name: "Manager",
       permissions: {
@@ -62,15 +68,18 @@ const seed = async () => {
       },
     });
 
-    const hashedPassword = await bcrypt.hash("12345678", 10);
     await User.create({
       name: "Admin",
       email: "admin@example.com",
-      password: hashedPassword,
+      password: "12345678",
       roleId: adminRole.id,
     });
 
     console.log("Database seeded successfully");
+
+    // Re-enable foreign key checks after sync
+    await sequelize.query("SET FOREIGN_KEY_CHECKS = 1", { raw: true });
+
     await sequelize.close();
     process.exit(0);
   } catch (error) {
